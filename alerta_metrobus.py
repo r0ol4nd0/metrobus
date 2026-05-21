@@ -35,7 +35,7 @@ class MetrobusMonitor:
         return R * c
 
     def obtener_estado_oficial(self) -> str:
-        """Extrae las alertas oficiales de la web del gobierno"""
+        """Extrae las alertas oficiales y detecta si hay cierres por manifestaciones"""
         if not SCRAPER_API_KEY:
             return "Error: Falta la clave de ScraperAPI."
 
@@ -59,6 +59,12 @@ class MetrobusMonitor:
                 7: "Línea 7", 8: "Línea 8"
             }
 
+            # Palabras clave para detectar manifestaciones
+            palabras_manifestacion = [
+                "manifestación", "manifestacion", "protesta", "bloqueo",
+                "marcha", "plantón", "planton", "cierre por manifestación"
+            ]
+
             for tabla in tablas:
                 if 'estaciones afectadas' in tabla.text.lower():
                     for num_fila, fila in enumerate(tabla.find_all('tr')[1:], start=1):
@@ -68,20 +74,37 @@ class MetrobusMonitor:
                             est = celdas[1].get_text(strip=True)
                             afec = celdas[2].get_text(strip=True)
 
+                            info_adicional = ""
+                            if len(celdas) >= 4:
+                                info_adicional = celdas[3].get_text(strip=True)
+
+                            # Unir todo el texto para buscar palabras clave
+                            texto_completo = f"{est} {afec} {info_adicional}".lower()
+
                             est_limpio = est.lower().replace("estado", "").strip()
                             afec_limpio = afec.lower().replace("estaciones afectadas", "").strip()
 
-                            info_adicional = ""
-                            if len(celdas) >= 4:
-                                info_adicional = celdas[3].get_text(strip=True).replace("Información adicional", "").strip()
-
                             if "servicio regular" not in est_limpio or "ninguna" not in afec_limpio:
-                                reporte_linea = f"- {linea_nombre}: {est} | {afec}"
-                                if info_adicional and info_adicional.lower() != "ninguna":
-                                    reporte_linea += f" | Info: {info_adicional}"
+
+                                # Detectar si es por manifestación
+                                es_manifestacion = any(palabra in texto_completo for palabra in palabras_manifestacion)
+
+                                if es_manifestacion:
+                                    tipo_cierre = "🚫 **Cerrada por manifestación**"
+                                else:
+                                    tipo_cierre = "⚠️ **Cerrada**"
+
+                                reporte_linea = f"- {linea_nombre}: {tipo_cierre}\n  Estación(es): {afec}"
+
+                                if info_adicional and info_adicional.lower() not in ["ninguna", ""]:
+                                    reporte_linea += f"\n  Info adicional: {info_adicional}"
+
                                 problemas.append(reporte_linea)
 
-            return "Servicio Regular. Todo en orden." if not problemas else "AFECTACIONES DETECTADAS (Oficial):\n" + "\n".join(problemas)
+            if not problemas:
+                return "✅ Servicio Regular. Todo en orden."
+
+            return "🚨 AFECTACIONES DETECTADAS (Oficial):\n\n" + "\n\n".join(problemas)
 
         except Exception as e:
             return f"Error en extracción SEMOVI: {str(e)}"
@@ -137,14 +160,14 @@ class MetrobusMonitor:
             es_manana = hora_cdmx < 12
 
             # ==============================================
-            # CAMBIO REALIZADO SEGÚN TU PETICIÓN
+            # RUTA PERSONALIZADA: Félix Cuevas ↔ Villa Olímpica
             # ==============================================
             if es_manana:
                 estacion, destino = "Félix Cuevas", "Villa Olímpica"
-                lat_origen, lon_origen = 19.3725, -99.1798      # Félix Cuevas
+                lat_origen, lon_origen = 19.3725, -99.1798  # Félix Cuevas
             else:
                 estacion, destino = "Villa Olímpica", "Félix Cuevas"
-                lat_origen, lon_origen = 19.3648, -99.1835      # Villa Olímpica
+                lat_origen, lon_origen = 19.3648, -99.1835  # Villa Olímpica
             # ==============================================
 
             buses_utiles = []
@@ -170,7 +193,6 @@ class MetrobusMonitor:
                     }
                     buses_por_ruta[nombre_linea].append(bus_data)
 
-                    # Lógica del Asistente Personal (Línea 1)
                     if nombre_linea == "Línea 1":
                         lat_bus = bus_data['lat']
                         lon_bus = bus_data['lon']
@@ -224,7 +246,7 @@ class MetrobusMonitor:
                     estado_term = "🔴 Tráfico Pesado"
                 reporte_termometro = f"🌡️ TERMÓMETRO DE RUTA\n- Línea 1: {estado_term} (Vel. promedio: {avg_speed_l1:.1f} km/h)"
 
-            # === HOTSPOTS (solo Línea 1) ===
+            # === HOTSPOTS ===
             terminales_ignoradas = [
                 "indios verdes", "caminero", "gálvez", "colonia del valle",
                 "tepalcates", "tacubaya", "etiopía", "tenayuca", "santa cruz atoyac",
