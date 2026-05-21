@@ -136,12 +136,16 @@ class MetrobusMonitor:
             hora_cdmx = (datetime.datetime.utcnow() - datetime.timedelta(hours=6)).hour
             es_manana = hora_cdmx < 12
 
+            # ==============================================
+            # CAMBIO REALIZADO SEGÚN TU PETICIÓN
+            # ==============================================
             if es_manana:
-                estacion, destino = "Indios Verdes", "Poliforum"
-                lat_origen, lon_origen = 19.4954, -99.1195
+                estacion, destino = "Félix Cuevas", "Villa Olímpica"
+                lat_origen, lon_origen = 19.3725, -99.1798      # Félix Cuevas
             else:
-                estacion, destino = "Poliforum", "Indios Verdes"
-                lat_origen, lon_origen = 19.3946, -99.1746
+                estacion, destino = "Villa Olímpica", "Félix Cuevas"
+                lat_origen, lon_origen = 19.3648, -99.1835      # Villa Olímpica
+            # ==============================================
 
             buses_utiles = []
             buses_por_ruta = {}
@@ -299,7 +303,6 @@ class MetrobusMonitor:
         payload = {
             "chat_id": TELEGRAM_CHAT_ID,
             "text": f"🚇 REPORTE METROBÚS\n\n{mensaje_final}"
-            # Se quitó parse_mode para mayor estabilidad
         }
 
         try:
