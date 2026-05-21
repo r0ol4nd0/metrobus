@@ -18,7 +18,7 @@ SENHA = os.getenv("SENHA_API_KEY")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class MetrobusMonitor:
-    def _init_(self, url_semovi: str):
+    def __init__(self, url_semovi: str):
         self.url_semovi = url_semovi
 
     @staticmethod
