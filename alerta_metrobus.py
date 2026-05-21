@@ -290,7 +290,7 @@ class MetrobusMonitor:
             logging.error(f"Error al enviar Telegram: {str(e)}")
             exit(1)
 
-if _name_ == "_main_":
+if _name_ == "__main__":
     url_directa = "https://incidentesmovilidad.cdmx.gob.mx/public/bandejaEstadoServicio.xhtml?idMedioTransporte=mb"
     monitor = MetrobusMonitor(url_directa)
     monitor.enviar_reporte_completo()
