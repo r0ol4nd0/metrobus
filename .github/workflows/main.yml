@@ -2,13 +2,13 @@ name: Monitor Metrobus CDMX
 
 on:
   schedule:
-    # 7:30 AM CDMX (13:30 UTC), de Lunes a Viernes (1 al 5)
-    - cron: '30 10 * * 1-5'
-    
-    # 5:50 PM CDMX (23:50 UTC), de Lunes a Viernes (1 al 5)
-    - cron: '20 22 * * 1-5'
-    
-  workflow_dispatch: 
+    # 9:00 AM CDMX (15:00 UTC) - Lunes a Viernes
+    - cron: '0 15 * * 1-5'
+
+    # 7:30 PM CDMX (01:30 UTC del día siguiente) - Lunes a Viernes
+    - cron: '30 1 * * 1-5'
+
+  workflow_dispatch:
 
 jobs:
   run-script:
