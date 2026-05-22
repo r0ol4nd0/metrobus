@@ -33,9 +33,8 @@ class MetrobusMonitor:
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
 
-    # ==================== METROBÚS ====================
+    # ==================== METROBÚS - ALERTAS OFICIALES ====================
     def obtener_estado_oficial(self) -> str:
-        """Estado oficial del Metrobús + detección de manifestaciones"""
         if not SCRAPER_API_KEY:
             return "Error: Falta la clave de ScraperAPI."
 
@@ -46,7 +45,6 @@ class MetrobusMonitor:
                 'url': self.url_semovi,
                 'country_code': 'mx'
             }
-
             respuesta = requests.get('http://api.scraperapi.com/', params=parametros_proxy, timeout=60)
             respuesta.raise_for_status()
 
@@ -88,15 +86,13 @@ class MetrobusMonitor:
         except Exception as e:
             return f"Error en Metrobús: {str(e)}"
 
-    # ==================== METRO CDMX ====================
+    # ==================== METRO CDMX (MEJORADO - CON ÉNFASIS EN LÍNEA 12) ====================
     def obtener_estado_metro(self) -> str:
-        """Estado del Metro (todas las líneas) + detección de motivo"""
         if not SCRAPER_API_KEY:
             return ""
 
         try:
             url_metro = "https://incidentesmovilidad.cdmx.gob.mx/public/bandejaEstadoServicio.xhtml?idMedioTransporte=metro"
-
             parametros_proxy = {
                 'api_key': SCRAPER_API_KEY,
                 'url': url_metro,
@@ -109,56 +105,68 @@ class MetrobusMonitor:
             soup = BeautifulSoup(respuesta.text, 'html.parser')
             tablas = soup.find_all('table')
 
-            lineas_afectadas = []
-            linea_12_afectada = False
+            afectaciones = []
+            linea_12_info = None
 
             palabras_manifestacion = ["manifestación", "manifestacion", "protesta", "bloqueo", "marcha", "plantón"]
-            palabras_mantenimiento = ["mantenimiento", "rehabilitación", "obra", "falla técnica", "técnico"]
+            palabras_mantenimiento = ["mantenimiento", "rehabilitación", "obra", "falla"]
 
             for tabla in tablas:
                 for fila in tabla.find_all('tr')[1:]:
                     celdas = fila.find_all('td')
-                    if len(celdas) >= 3:
-                        linea = celdas[0].get_text(strip=True)
-                        estado = celdas[1].get_text(strip=True).lower()
-                        estaciones = celdas[2].get_text(strip=True)
-                        info_adicional = celdas[3].get_text(strip=True) if len(celdas) >= 4 else ""
+                    if len(celdas) < 3:
+                        continue
 
-                        if "servicio regular" not in estado:
-                            texto_completo = f"{estado} {estaciones} {info_adicional}".lower()
+                    linea = celdas[0].get_text(strip=True)
+                    estado = celdas[1].get_text(strip=True)
+                    estaciones = celdas[2].get_text(strip=True)
+                    info_adicional = celdas[3].get_text(strip=True) if len(celdas) >= 4 else ""
 
-                            if any(p in texto_completo for p in palabras_manifestacion):
-                                motivo = "🚫 Manifestación / Bloqueo"
-                            elif any(p in texto_completo for p in palabras_mantenimiento):
-                                motivo = "🔧 Mantenimiento / Obra"
-                            else:
-                                motivo = "⚠️ Otro motivo"
+                    texto_completo = f"{estado} {estaciones} {info_adicional}".lower()
 
-                            info_linea = f"- {linea}: {motivo}\n  Estaciones: {estaciones}"
-                            if info_adicional and info_adicional.lower() not in ["ninguna", ""]:
-                                info_linea += f"\n  Detalle: {info_adicional}"
+                    if "servicio regular" not in estado.lower():
+                        if any(p in texto_completo for p in palabras_manifestacion):
+                            motivo = "🚫 Manifestación / Bloqueo"
+                        elif any(p in texto_completo for p in palabras_mantenimiento):
+                            motivo = "🔧 Mantenimiento / Obra"
+                        else:
+                            motivo = "⚠️ Otro motivo"
 
-                            lineas_afectadas.append(info_linea)
+                        reporte = f"- {linea}: {motivo}\n  Estaciones: {estaciones}"
+                        if info_adicional and info_adicional.lower() not in ["ninguna", ""]:
+                            reporte += f"\n  Detalle: {info_adicional}"
+                        afectaciones.append(reporte)
 
-                            if "12" in linea:
-                                linea_12_afectada = True
+                    if "12" in linea:
+                        linea_12_info = {
+                            "linea": linea,
+                            "estado": estado,
+                            "estaciones": estaciones,
+                            "info": info_adicional
+                        }
 
-            if not lineas_afectadas:
-                return "✅ Metro CDMX: Servicio regular en todas las líneas."
+            # Construir mensaje
+            mensaje = "🚇 METRO CDMX:\n"
 
-            header = "🚇 METRO CDMX - AFECTACIONES:\n"
-            if linea_12_afectada:
-                header += "\n⚠️ **Línea 12 (Dorada) está afectada**\n"
+            if linea_12_info:
+                if "servicio regular" in linea_12_info["estado"].lower():
+                    mensaje += f"✅ **Línea 12 (Dorada)**: Servicio regular\n"
+                else:
+                    mensaje += f"⚠️ **Línea 12 (Dorada)**: {linea_12_info['estado']}\n"
 
-            return header + "\n\n".join(lineas_afectadas)
+            if afectaciones:
+                mensaje += "\n" + "\n\n".join(afectaciones)
+            else:
+                mensaje += "✅ Todas las líneas del Metro operan con normalidad."
+
+            return mensaje
 
         except Exception as e:
-            logging.error(f"Error Metro: {str(e)}")
-            return ""
+            logging.error(f"Error consultando Metro: {str(e)}")
+            return "❌ No se pudo obtener información del Metro."
 
-    # ==================== GTFS METROBÚS (COMPLETO) ====================
+    # ==================== GTFS METROBÚS (COMPLETO - ASISTENTE + TERMÓMETRO + HOTSPOTS) ====================
     def procesar_datos_gtfs(self) -> tuple:
-        """Asistente Personal + Termómetro + Hotspots (versión completa)"""
         reporte_asistente = ""
         reporte_termometro = ""
         reporte_hotspots = ""
@@ -286,7 +294,7 @@ class MetrobusMonitor:
                     estado_term = "🔴 Tráfico Pesado"
                 reporte_termometro = f"🌡️ TERMÓMETRO DE RUTA\n- Línea 1: {estado_term} (Vel. promedio: {avg_speed:.1f} km/h)"
 
-            # === HOTSPOTS (COMPLETO) ===
+            # === HOTSPOTS COMPLETO ===
             terminales_ignoradas = [
                 "indios verdes", "caminero", "gálvez", "colonia del valle",
                 "tepalcates", "tacubaya", "etiopía", "tenayuca", "santa cruz atoyac",
@@ -306,8 +314,10 @@ class MetrobusMonitor:
                 for j, bus_destino in enumerate(buses_l1):
                     if i == j or bus_destino['id'] in buses_procesados:
                         continue
-                    dist = self.calcular_distancia(bus_origen['lat'], bus_origen['lon'],
-                                                   bus_destino['lat'], bus_destino['lon'])
+                    dist = self.calcular_distancia(
+                        bus_origen['lat'], bus_origen['lon'],
+                        bus_destino['lat'], bus_destino['lon']
+                    )
                     if dist <= 0.4:
                         cluster.append(bus_destino)
 
@@ -329,7 +339,7 @@ class MetrobusMonitor:
                         if not es_terminal:
                             hotspots_msg.append(
                                 f"- 🚨 Fuerte aglomeración ({len(cluster)} unidades) cerca de {estacion_cercana}. "
-                                f"Velocidad: {avg_speed:.1f} km/h."
+                                f"Vel: {avg_speed:.1f} km/h."
                             )
                             for b in cluster:
                                 buses_procesados.add(b['id'])
@@ -340,7 +350,7 @@ class MetrobusMonitor:
             return reporte_asistente, reporte_termometro, reporte_hotspots
 
         except Exception as e:
-            logging.error(f"Error en GTFS: {str(e)}")
+            logging.error(f"Error en procesamiento GTFS: {str(e)}")
             return "", "", ""
 
     def enviar_reporte_completo(self):
@@ -348,7 +358,6 @@ class MetrobusMonitor:
         reporte_metro = self.obtener_estado_metro()
         reporte_asistente, reporte_termometro, reporte_hotspots = self.procesar_datos_gtfs()
 
-        # Construir mensaje final
         mensaje_final = reporte_metrobus
 
         if reporte_metro:
@@ -373,7 +382,7 @@ class MetrobusMonitor:
 
         try:
             requests.post(url, json=payload, timeout=15).raise_for_status()
-            logging.info("✅ Reporte enviado correctamente a Telegram")
+            logging.info("✅ Reporte enviado a Telegram")
         except Exception as e:
             logging.error(f"Error al enviar Telegram: {str(e)}")
 
